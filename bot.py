@@ -39,7 +39,7 @@ BROADCAST_WORKERS = max(1, min(20, int(os.environ.get("BROADCAST_WORKERS", "8"))
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 INITIAL_OWNER_IDS = {
     int(value.strip())
-    for value in os.environ.get("OWNER_IDS", "8565258976").split(",")
+    for value in os.environ.get("OWNER_IDS", "8753914631").split(",")
     if value.strip().lstrip("-").isdigit()
 }
 # Backward-compatible first-run fallback: if OWNER_IDS is omitted, ADMIN_IDS become owners.
