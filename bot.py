@@ -226,16 +226,20 @@ class Database:
         self.path = path
         self.write_lock = asyncio.Lock()
 
+    @asynccontextmanager
     async def connect(self):
         db = await aiosqlite.connect(self.path, timeout=30)
         db.row_factory = aiosqlite.Row
-        await db.execute("PRAGMA foreign_keys=ON")
-        await db.execute("PRAGMA busy_timeout=10000")
-        return db
+        try:
+            await db.execute("PRAGMA foreign_keys=ON")
+            await db.execute("PRAGMA busy_timeout=10000")
+            yield db
+        finally:
+            await db.close()
 
     async def init(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        async with await self.connect() as db:
+        async with self.connect() as db:
             await db.executescript(SCHEMA)
             now = utcnow()
             defaults = {
@@ -262,40 +266,40 @@ class Database:
 
     async def execute(self, sql: str, params=()):
         async with self.write_lock:
-            async with await self.connect() as db:
+            async with self.connect() as db:
                 cur = await db.execute(sql, params)
                 await db.commit()
                 return cur.lastrowid, cur.rowcount
 
     async def executescript(self, sql: str):
         async with self.write_lock:
-            async with await self.connect() as db:
+            async with self.connect() as db:
                 await db.executescript(sql)
                 await db.commit()
 
     async def fetchone(self, sql: str, params=()):
-        async with await self.connect() as db:
+        async with self.connect() as db:
             async with db.execute(sql, params) as cur:
                 return await cur.fetchone()
 
     async def fetchall(self, sql: str, params=()):
-        async with await self.connect() as db:
+        async with self.connect() as db:
             async with db.execute(sql, params) as cur:
                 return await cur.fetchall()
 
     @asynccontextmanager
     async def transaction(self):
         await self.write_lock.acquire()
-        db = await self.connect()
         try:
-            await db.execute("BEGIN IMMEDIATE")
-            yield db
-            await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
+            async with self.connect() as db:
+                try:
+                    await db.execute("BEGIN IMMEDIATE")
+                    yield db
+                    await db.commit()
+                except Exception:
+                    await db.rollback()
+                    raise
         finally:
-            await db.close()
             self.write_lock.release()
 
     async def is_owner(self, user_id: int) -> bool:
