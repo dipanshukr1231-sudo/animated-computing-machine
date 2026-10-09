@@ -6,6 +6,7 @@ import os
 import shutil
 import signal
 import sqlite3
+import threading
 import time
 import traceback
 import uuid
@@ -38,7 +39,7 @@ BROADCAST_WORKERS = max(1, min(20, int(os.environ.get("BROADCAST_WORKERS", "8"))
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 INITIAL_OWNER_IDS = {
     int(value.strip())
-    for value in os.environ.get("OWNER_IDS", "").split(",")
+    for value in os.environ.get("OWNER_IDS", "8565258976").split(",")
     if value.strip().lstrip("-").isdigit()
 }
 # Backward-compatible first-run fallback: if OWNER_IDS is omitted, ADMIN_IDS become owners.
@@ -53,6 +54,8 @@ DEFAULT_START = os.environ.get("DEFAULT_START_MESSAGE", "Hello, Welcome to our b
 DEFAULT_MAINTENANCE = os.environ.get(
     "DEFAULT_MAINTENANCE_MESSAGE", "The bot is temporarily under maintenance. Please try again later."
 )
+WEB_HOST = os.environ.get("WEB_HOST", "0.0.0.0")
+WEB_PORT = int(os.environ.get("PORT", os.environ.get("WEB_PORT", "10000")))
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
@@ -1167,14 +1170,49 @@ def build_application() -> Application:
     return application
 
 
+def start_health_server():
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path in {"/", "/health", "/healthz"}:
+                payload = json.dumps({
+                    "status": "ok",
+                    "service": "telegram-bot",
+                    "uptime_seconds": int(time.monotonic() - START_MONOTONIC),
+                }).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def log_message(self, format, *args):
+            logger.debug("Health server: " + format, *args)
+
+    server = ThreadingHTTPServer((WEB_HOST, WEB_PORT), HealthHandler)
+    thread = threading.Thread(target=server.serve_forever, name="health-server", daemon=True)
+    thread.start()
+    logger.info("Health server listening on %s:%s", WEB_HOST, WEB_PORT)
+    return server
+
+
 def main():
+    health_server = start_health_server()
     application = build_application()
-    application.run_polling(
-        allowed_updates=Update.ALL_TYPES,
-        drop_pending_updates=False,
-        close_loop=True,
-        stop_signals=(signal.SIGINT, signal.SIGTERM),
-    )
+    try:
+        application.run_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=False,
+            close_loop=True,
+            stop_signals=(signal.SIGINT, signal.SIGTERM),
+        )
+    finally:
+        health_server.shutdown()
+        health_server.server_close()
 
 
 if __name__ == "__main__":
