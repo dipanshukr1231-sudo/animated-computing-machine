@@ -458,16 +458,13 @@ async def send_counted(bot, user_id: int, method: str, **kwargs):
 async def panel_text() -> str:
     total = (await db.fetchone("SELECT COUNT(*) n FROM users"))["n"]
     active = (await db.fetchone(
-        "SELECT COUNT(*) n FROM users WHERE last_seen>=?", ((datetime.now(timezone.utc)-timedelta(days=ACTIVE_DAYS)).isoformat(timespec="seconds"),)
+        "SELECT COUNT(*) n FROM users WHERE last_seen>=?",
+        ((datetime.now(timezone.utc) - timedelta(days=ACTIVE_DAYS)).isoformat(timespec="seconds"),),
     ))["n"]
     return (
-        "<b>⚙️ Administration Panel</b>
-
-"
-        f"Users: <b>{total:,}</b>
-Active ({ACTIVE_DAYS}d): <b>{active:,}</b>
-
-"
+        "<b>⚙️ Administration Panel</b>\n\n"
+        f"Users: <b>{total:,}</b>\n"
+        f"Active ({ACTIVE_DAYS}d): <b>{active:,}</b>\n\n"
         "Choose a section:"
     )
 
@@ -520,7 +517,8 @@ async def statistics_text() -> str:
         "30 days": (now - timedelta(days=29)).date().isoformat(),
     }
     user_row = await db.fetchone(
-        "SELECT COUNT(*) total, SUM(CASE WHEN is_banned=1 THEN 1 ELSE 0 END) banned, SUM(CASE WHEN last_seen>=? THEN 1 ELSE 0 END) active FROM users",
+        "SELECT COUNT(*) total, SUM(CASE WHEN is_banned=1 THEN 1 ELSE 0 END) banned, "
+        "SUM(CASE WHEN last_seen>=? THEN 1 ELSE 0 END) active FROM users",
         ((now - timedelta(days=ACTIVE_DAYS)).isoformat(timespec="seconds"),),
     )
     all_msg = await db.fetchone("""SELECT
@@ -528,7 +526,10 @@ async def statistics_text() -> str:
         SUM(CASE WHEN direction IN ('outgoing','admin_reply') THEN 1 ELSE 0 END) outgoing,
         SUM(CASE WHEN direction='admin_reply' THEN 1 ELSE 0 END) replies,
         COUNT(*) stored FROM message_log""")
-    broadcasts = await db.fetchone("SELECT COUNT(*) total, COALESCE(SUM(success),0) success, COALESCE(SUM(failed),0) failed FROM broadcasts")
+    broadcasts = await db.fetchone(
+        "SELECT COUNT(*) total, COALESCE(SUM(success),0) success, "
+        "COALESCE(SUM(failed),0) failed FROM broadcasts"
+    )
     lines = [
         "<b>📊 Advanced Statistics</b>", "",
         f"👥 Total users: <b>{user_row['total']:,}</b>",
@@ -543,34 +544,44 @@ async def statistics_text() -> str:
         "<b>Period breakdown</b>",
     ]
     for label, start_day in periods.items():
-        r = await db.fetchone("""SELECT COALESCE(SUM(new_users),0) new_users, COALESCE(SUM(incoming),0) incoming,
-            COALESCE(SUM(outgoing),0) outgoing, COALESCE(SUM(broadcast_success),0) bsuccess
+        r = await db.fetchone("""SELECT COALESCE(SUM(new_users),0) new_users,
+            COALESCE(SUM(incoming),0) incoming, COALESCE(SUM(outgoing),0) outgoing,
+            COALESCE(SUM(broadcast_success),0) bsuccess
             FROM daily_stats WHERE day>=?""", (start_day,))
-        lines.append(f"{label}: +{r['new_users']} users | ↓{r['incoming']} | ↑{r['outgoing']} | 📣{r['bsuccess']}")
+        lines.append(
+            f"{label}: +{r['new_users']} users | ↓{r['incoming']} | "
+            f"↑{r['outgoing']} | 📣{r['bsuccess']}"
+        )
     db_size = DATABASE_PATH.stat().st_size if DATABASE_PATH.exists() else 0
     errors = (await db.fetchone("SELECT COUNT(*) n FROM errors"))["n"]
     lines += [
         "", "<b>System</b>",
-        f"⏱ Uptime: <b>{human_duration(time.monotonic()-START_MONOTONIC)}</b>",
+        f"⏱ Uptime: <b>{human_duration(time.monotonic() - START_MONOTONIC)}</b>",
         f"🗃 Stored users/messages: <b>{user_row['total']:,} / {all_msg['stored']:,}</b>",
-        f"💾 Database size: <b>{db_size/1024/1024:.2f} MB</b>",
+        f"💾 Database size: <b>{db_size / 1024 / 1024:.2f} MB</b>",
         f"⚠️ Logged errors: <b>{errors:,}</b>",
     ]
-    return "
-".join(lines)
+    return "\n".join(lines)
 
 
 async def users_text() -> str:
     row = await db.fetchone("""SELECT COUNT(*) total,
         SUM(CASE WHEN is_banned=1 THEN 1 ELSE 0 END) banned,
         SUM(CASE WHEN is_active=1 THEN 1 ELSE 0 END) reachable FROM users""")
-    recent = await db.fetchall("SELECT user_id,username,first_name,last_seen,is_banned FROM users ORDER BY last_seen DESC LIMIT 8")
-    lines = ["<b>👥 User Management</b>", "", f"Total: <b>{row['total']}</b> | Reachable: <b>{row['reachable'] or 0}</b> | Banned: <b>{row['banned'] or 0}</b>", "", "<b>Recently active</b>"]
+    recent = await db.fetchall(
+        "SELECT user_id,username,first_name,last_seen,is_banned "
+        "FROM users ORDER BY last_seen DESC LIMIT 8"
+    )
+    lines = [
+        "<b>👥 User Management</b>", "",
+        f"Total: <b>{row['total']}</b> | Reachable: <b>{row['reachable'] or 0}</b> | "
+        f"Banned: <b>{row['banned'] or 0}</b>",
+        "", "<b>Recently active</b>",
+    ]
     for r in recent:
         label = f"@{r['username']}" if r['username'] else (r['first_name'] or "Unknown")
         lines.append(f"{'🚫' if r['is_banned'] else '👤'} <code>{r['user_id']}</code> - {esc(label)}")
-    return "
-".join(lines)
+    return "\n".join(lines)
 
 
 async def user_detail_text(user_id: int) -> Optional[str]:
@@ -582,22 +593,14 @@ async def user_detail_text(user_id: int) -> Optional[str]:
         SUM(CASE WHEN direction IN ('outgoing','admin_reply') THEN 1 ELSE 0 END) outgoing
         FROM message_log WHERE user_id=?""", (user_id,))
     return (
-        "<b>👤 User Details</b>
-
-"
-        f"ID: <code>{u['user_id']}</code>
-"
-        f"Name: {esc((u['first_name'] or '') + ' ' + (u['last_name'] or ''))}
-"
-        f"Username: {('@'+esc(u['username'])) if u['username'] else '-'}
-"
-        f"Language: {esc(u['language_code'] or '-')}
-"
-        f"Status: <b>{'Banned' if u['is_banned'] else 'Active'}</b>
-"
-        f"Joined: {esc(u['created_at'])}
-Last seen: {esc(u['last_seen'])}
-"
+        "<b>👤 User Details</b>\n\n"
+        f"ID: <code>{u['user_id']}</code>\n"
+        f"Name: {esc((u['first_name'] or '') + ' ' + (u['last_name'] or ''))}\n"
+        f"Username: {('@' + esc(u['username'])) if u['username'] else '-'}\n"
+        f"Language: {esc(u['language_code'] or '-')}\n"
+        f"Status: <b>{'Banned' if u['is_banned'] else 'Active'}</b>\n"
+        f"Joined: {esc(u['created_at'])}\n"
+        f"Last seen: {esc(u['last_seen'])}\n"
         f"Messages: {m['total']} ({m['incoming'] or 0} in / {m['outgoing'] or 0} out)"
     )
 
@@ -681,14 +684,10 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]))
     elif data == "user_search":
         context.user_data["state"] = "user_search"
-        await safe_edit(q, "<b>🔎 Search Users</b>
-
-Send a Telegram ID or exact username.", back_keyboard("users"))
+        await safe_edit(q, "<b>🔎 Search Users</b>\n\nSend a Telegram ID or exact username.", back_keyboard("users"))
     elif data == "ban_prompt":
         context.user_data["state"] = "ban_target"
-        await safe_edit(q, "<b>🚫 Ban / Unban User</b>
-
-Send the user's Telegram ID.", back_keyboard("users"))
+        await safe_edit(q, "<b>🚫 Ban / Unban User</b>\n\nSend the user's Telegram ID.", back_keyboard("users"))
     elif data.startswith("toggle_ban:"):
         uid = int(data.split(":", 1)[1])
         u = await db.fetchone("SELECT is_banned FROM users WHERE user_id=?", (uid,))
@@ -714,9 +713,7 @@ Send the user's Telegram ID.", back_keyboard("users"))
         await context.bot.send_document(q.from_user.id, document=path.open("rb"), caption=f"Exported {len(rows)} users.")
         path.unlink(missing_ok=True)
     elif data == "messages":
-        await safe_edit(q, "<b>✏️ Configurable Messages</b>
-
-Choose the message to edit.", InlineKeyboardMarkup([
+        await safe_edit(q, "<b>✏️ Configurable Messages</b>\n\nChoose the message to edit.", InlineKeyboardMarkup([
             [InlineKeyboardButton("👋 Welcome Message", callback_data="edit_start")],
             [InlineKeyboardButton("🛠 Maintenance Notice", callback_data="edit_maintenance")],
             [InlineKeyboardButton("⬅️ Back", callback_data="panel")],
@@ -725,17 +722,10 @@ Choose the message to edit.", InlineKeyboardMarkup([
         key = "start_message" if data == "edit_start" else "maintenance_message"
         context.user_data["state"] = key
         current = await db.setting(key)
-        await safe_edit(q, f"<b>Edit Message</b>
-
-Current:
-<blockquote>{esc(current)}</blockquote>
-
-Send the new message.", back_keyboard("messages"))
+        await safe_edit(q, f"<b>Edit Message</b>\n\nCurrent:\n<blockquote>{esc(current)}</blockquote>\n\nSend the new message.", back_keyboard("messages"))
     elif data == "maintenance":
         enabled = await db.setting("maintenance_mode") == "1"
-        await safe_edit(q, f"<b>🛠 Maintenance Mode</b>
-
-Status: <b>{'ON' if enabled else 'OFF'}</b>", InlineKeyboardMarkup([
+        await safe_edit(q, f"<b>🛠 Maintenance Mode</b>\n\nStatus: <b>{'ON' if enabled else 'OFF'}</b>", InlineKeyboardMarkup([
             [InlineKeyboardButton("🔴 Disable" if enabled else "🟢 Enable", callback_data="maintenance_toggle")],
             [InlineKeyboardButton("✏️ Edit Notice", callback_data="edit_maintenance")],
             [InlineKeyboardButton("⬅️ Back", callback_data="panel")],
@@ -757,21 +747,16 @@ Status: <b>{'ON' if enabled else 'OFF'}</b>", InlineKeyboardMarkup([
         lines += [f"👑 <code>{x}</code>" for x in owners]
         lines += ["", "<b>Admins</b>"]
         lines += [f"🛡 <code>{x}</code>" for x in admins] or ["No managed admins."]
-        await safe_edit(q, "
-".join(lines), InlineKeyboardMarkup([
+        await safe_edit(q, "\n".join(lines), InlineKeyboardMarkup([
             [InlineKeyboardButton("➕ Add Admin", callback_data="admin_add"), InlineKeyboardButton("➖ Remove Admin", callback_data="admin_remove")],
             [InlineKeyboardButton("⬅️ Back", callback_data="panel")],
         ]))
     elif data in {"admin_add", "admin_remove"}:
         context.user_data["state"] = data
-        await safe_edit(q, f"<b>{'Add' if data == 'admin_add' else 'Remove'} Admin</b>
-
-Send the Telegram user ID.", back_keyboard("admins"))
+        await safe_edit(q, f"<b>{'Add' if data == 'admin_add' else 'Remove'} Admin</b>\n\nSend the Telegram user ID.", back_keyboard("admins"))
     elif data == "broadcast":
         context.user_data["state"] = "broadcast_content"
-        await safe_edit(q, "<b>📣 New Broadcast</b>
-
-Send or forward one message containing the text/media to broadcast. Formatting, captions, premium emoji entities, and supported media are preserved by Telegram's copy operation.", back_keyboard("panel"))
+        await safe_edit(q, "<b>📣 New Broadcast</b>\n\nSend or forward one message containing the text/media to broadcast. Formatting, captions, premium emoji entities, and supported media are preserved by Telegram's copy operation.", back_keyboard("panel"))
     elif data == "broadcast_confirm":
         payload = context.user_data.get("broadcast_payload")
         if not payload:
@@ -794,12 +779,8 @@ Send or forward one message containing the text/media to broadcast. Formatting, 
         await q.answer("Cancellation requested.", show_alert=True)
     elif data == "backup":
         recent = await db.fetchall("SELECT id,status,success,failed,started_at FROM broadcasts ORDER BY id DESC LIMIT 3")
-        suffix = "
-".join(f"#{r['id']} {r['status']} ✅{r['success']} ❌{r['failed']}" for r in recent) or "No broadcasts yet."
-        await safe_edit(q, f"<b>💾 Backup / Restore</b>
-
-Recent broadcasts:
-{suffix}", InlineKeyboardMarkup([
+        suffix = "\n".join(f"#{r['id']} {r['status']} ✅{r['success']} ❌{r['failed']}" for r in recent) or "No broadcasts yet."
+        await safe_edit(q, f"<b>💾 Backup / Restore</b>\n\nRecent broadcasts:\n{suffix}", InlineKeyboardMarkup([
             [InlineKeyboardButton("💾 Create Backup", callback_data="backup_create")],
             [InlineKeyboardButton("♻️ Restore Backup", callback_data="restore_prompt")],
             [InlineKeyboardButton("⬅️ Back", callback_data="panel")],
@@ -812,9 +793,7 @@ Recent broadcasts:
         await safe_edit(q, "✅ Backup created and sent.", back_keyboard("backup"))
     elif data == "restore_prompt":
         context.user_data["state"] = "restore_upload"
-        await safe_edit(q, "<b>♻️ Restore Backup</b>
-
-Upload a backup ZIP created by this bot. It will be validated before replacement, and a safety backup will be created.", back_keyboard("backup"))
+        await safe_edit(q, "<b>♻️ Restore Backup</b>\n\nUpload a backup ZIP created by this bot. It will be validated before replacement, and a safety backup will be created.", back_keyboard("backup"))
     elif data == "restore_confirm":
         path = context.user_data.get("restore_path")
         if not path or not Path(path).exists():
@@ -824,16 +803,14 @@ Upload a backup ZIP created by this bot. It will be validated before replacement
         safety = await restore_database(Path(path))
         Path(path).unlink(missing_ok=True)
         context.user_data.clear()
-        await safe_edit(q, f"✅ Restore completed. Safety backup: <code>{esc(safety.name)}</code>
-Restart the process before further administrative changes.", None)
+        await safe_edit(q, f"✅ Restore completed. Safety backup: <code>{esc(safety.name)}</code>\nRestart the process before further administrative changes.", None)
         context.application.stop_running()
     elif data == "system":
         errors = await db.fetchall("SELECT context,error,created_at FROM errors ORDER BY id DESC LIMIT 5")
         active_b = await db.fetchall("SELECT id,status,success,failed,total FROM broadcasts WHERE status IN ('queued','running','cancelling') ORDER BY id DESC LIMIT 5")
         lines = ["<b>🩺 System Status</b>", "", f"Uptime: <b>{human_duration(time.monotonic()-START_MONOTONIC)}</b>", f"Database: <b>{DATABASE_PATH.stat().st_size/1024/1024:.2f} MB</b>", f"Running broadcasts: <b>{len(active_b)}</b>", "", "<b>Recent errors</b>"]
         lines += [f"{esc(r['created_at'])} - {esc(r['context'])}: {esc(r['error'][:120])}" for r in errors] or ["No recorded errors."]
-        await safe_edit(q, "
-".join(lines), InlineKeyboardMarkup([
+        await safe_edit(q, "\n".join(lines), InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Refresh", callback_data="system")],
             [InlineKeyboardButton("⬅️ Back", callback_data="panel")],
         ]))
@@ -907,10 +884,7 @@ async def admin_state_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         context.user_data["broadcast_payload"] = {"chat_id": message.chat_id, "message_id": message.message_id}
         context.user_data.pop("state", None)
         count = (await db.fetchone("SELECT COUNT(*) n FROM users WHERE is_banned=0 AND is_active=1"))["n"]
-        await message.reply_text(f"<b>Confirm Broadcast</b>
-
-Recipients: <b>{count:,}</b>
-The broadcast runs in the background and can be cancelled.", parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([
+        await message.reply_text(f"<b>Confirm Broadcast</b>\n\nRecipients: <b>{count:,}</b>\nThe broadcast runs in the background and can be cancelled.", parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🚀 Start Broadcast", callback_data="broadcast_confirm")],
             [InlineKeyboardButton("❌ Discard", callback_data="broadcast_discard")],
         ]))
@@ -995,13 +969,7 @@ async def run_broadcast(application: Application, bid: int, source_chat: int, so
                 row = await db.fetchone("SELECT total,success,failed,status FROM broadcasts WHERE id=?", (bid,))
                 done = row["success"] + row["failed"]
                 remaining = max(0, row["total"] - done)
-                text = f"<b>📣 Broadcast #{bid}</b>
-
-Total: {row['total']:,}
-✅ Success: {row['success']:,}
-❌ Failed: {row['failed']:,}
-⏳ Remaining: {remaining:,}
-Status: <b>{esc(row['status'])}</b>"
+                text = f"<b>📣 Broadcast #{bid}</b>\n\nTotal: {row['total']:,}\n✅ Success: {row['success']:,}\n❌ Failed: {row['failed']:,}\n⏳ Remaining: {remaining:,}\nStatus: <b>{esc(row['status'])}</b>"
                 try:
                     await application.bot.edit_message_text(text, chat_id=progress_chat, message_id=progress_message, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🛑 Cancel", callback_data=f"broadcast_cancel:{bid}")]]))
                 except BadRequest as exc:
@@ -1019,12 +987,7 @@ Status: <b>{esc(row['status'])}</b>"
         await ptask
         row = await db.fetchone("SELECT total,success,failed,status FROM broadcasts WHERE id=?", (bid,))
         await application.bot.edit_message_text(
-            f"<b>📣 Broadcast #{bid} {esc(row['status'])}</b>
-
-Total: {row['total']:,}
-✅ Success: {row['success']:,}
-❌ Failed: {row['failed']:,}
-Not attempted: {max(0,row['total']-row['success']-row['failed']):,}",
+            f"<b>📣 Broadcast #{bid} {esc(row['status'])}</b>\n\nTotal: {row['total']:,}\n✅ Success: {row['success']:,}\n❌ Failed: {row['failed']:,}\nNot attempted: {max(0, row['total'] - row['success'] - row['failed']):,}",
             chat_id=progress_chat, message_id=progress_message, parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Panel", callback_data="panel")]])
         )
@@ -1065,8 +1028,7 @@ async def forward_user_message(update: Update, context: ContextTypes.DEFAULT_TYP
     admins = await db.admin_ids()
     name = " ".join(x for x in [user.first_name, user.last_name] if x) or "Unknown"
     username = f"@{user.username}" if user.username else "no username"
-    header = f"👤 <b>{esc(name)}</b> ({esc(username)})
-ID: <code>{user.id}</code>"
+    header = f"👤 <b>{esc(name)}</b> ({esc(username)})\nID: <code>{user.id}</code>"
     delivered = 0
     for admin_id in admins:
         try:
